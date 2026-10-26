@@ -1,0 +1,32 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_bridgesession_free: (a: number, b: number) => void;
+export const bridgesession_codec_key_list: (a: number) => [number, number];
+export const bridgesession_describe_query: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const bridgesession_exec: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const bridgesession_exec_protocol: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+export const bridgesession_exec_protocol_stream: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const bridgesession_init_array_types: (a: number, b: number) => [number, number, number, number];
+export const bridgesession_new: () => number;
+export const bridgesession_parse_value: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const bridgesession_query: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+export const bridgesession_query_template: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+export const bridgesession_register_codecs: (a: number, b: number, c: number, d: number, e: number) => void;
+export const bridgesession_serialize_value: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const bridgesession_set_host_callbacks: (a: number, b: number, c: number) => void;
+export const bridgesession_set_in_transaction: (a: number, b: number) => void;
+export const bridgesession_set_transport: (a: number, b: any) => void;
+export const codec_array_parse: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const codec_array_serialize: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const codec_keys: () => [number, number];
+export const codec_parse_type: (a: number, b: number, c: number) => [number, number, number, number];
+export const codec_serialize: (a: number, b: number, c: number) => [number, number, number, number];
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_exn_store: (a: number) => void;
+export const __externref_table_alloc: () => number;
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_start: () => void;
