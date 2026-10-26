@@ -1,0 +1,10 @@
+target/
+node_modules/
+/vendor/
+/release/
+adapter/dist-cjs/
+adapter/test/repl-app.mjs
+adapter/test/repl-app.css
+/adapter/*.tgz
+.DS_Store
+*.log
