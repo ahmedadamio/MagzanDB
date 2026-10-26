@@ -1,0 +1,308 @@
+{
+  "name": "@pglite-rust/adapter",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "JS adapter: public PGlite API surface over the Rust core + Emscripten engine",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./types/index.d.ts",
+        "default": "./src/index.js"
+      },
+      "require": {
+        "types": "./types/index.d.cts",
+        "default": "./dist-cjs/index.cjs"
+      }
+    },
+    "./template": {
+      "import": {
+        "types": "./types/templating.d.ts",
+        "default": "./src/template.js"
+      },
+      "require": {
+        "types": "./types/templating.d.cts",
+        "default": "./dist-cjs/template.cjs"
+      }
+    },
+    "./live": {
+      "import": {
+        "types": "./types/live/index.d.ts",
+        "default": "./src/live.js"
+      },
+      "require": {
+        "types": "./types/live/index.d.cts",
+        "default": "./dist-cjs/live.cjs"
+      }
+    },
+    "./worker": {
+      "import": {
+        "types": "./types/worker/index.d.ts",
+        "default": "./src/worker.js"
+      },
+      "require": {
+        "types": "./types/worker/index.d.cts",
+        "default": "./dist-cjs/worker.cjs"
+      }
+    },
+    "./nodefs": {
+      "import": {
+        "types": "./types/fs/nodefs.d.ts",
+        "default": "./src/nodefs-entry.js"
+      },
+      "require": {
+        "types": "./types/fs/nodefs.d.cts",
+        "default": "./dist-cjs/nodefs.cjs"
+      }
+    },
+    "./basefs": {
+      "import": {
+        "types": "./types/fs/base.d.ts",
+        "default": "./src/basefs.js"
+      },
+      "require": {
+        "types": "./types/fs/base.d.cts",
+        "default": "./dist-cjs/basefs.cjs"
+      }
+    },
+    "./opfs-ahp": {
+      "import": {
+        "types": "./types/fs/opfs-ahp.d.ts",
+        "default": "./src/opfs-ahp.js"
+      },
+      "require": {
+        "types": "./types/fs/opfs-ahp.d.cts",
+        "default": "./dist-cjs/opfs-ahp.cjs"
+      }
+    },
+    "./socket": {
+      "import": {
+        "types": "./types/socket/index.d.ts",
+        "default": "./src/socket.js"
+      },
+      "require": {
+        "types": "./types/socket/index.d.cts",
+        "default": "./dist-cjs/socket.cjs"
+      }
+    },
+    "./pg-compat": {
+      "import": {
+        "types": "./types/pg-compat.d.ts",
+        "default": "./src/pg-compat.js"
+      },
+      "require": {
+        "types": "./types/pg-compat.d.cts",
+        "default": "./dist-cjs/pg-compat.cjs"
+      }
+    },
+    "./sync": {
+      "import": {
+        "types": "./types/sync/index.d.ts",
+        "default": "./src/sync.js"
+      },
+      "require": {
+        "types": "./types/sync/index.d.cts",
+        "default": "./dist-cjs/sync.cjs"
+      }
+    },
+    "./sync/apply": {
+      "import": {
+        "types": "./types/sync/apply.d.ts",
+        "default": "./src/sync-apply.js"
+      },
+      "require": {
+        "types": "./types/sync/apply.d.cts",
+        "default": "./dist-cjs/sync-apply.cjs"
+      }
+    },
+    "./tools": {
+      "import": {
+        "types": "./types/tools/index.d.ts",
+        "default": "./src/tools.js"
+      },
+      "require": {
+        "types": "./types/tools/index.d.cts",
+        "default": "./dist-cjs/tools.cjs"
+      }
+    },
+    "./icu": {
+      "import": {
+        "types": "./types/icu.d.ts",
+        "default": "./src/icu.js"
+      },
+      "require": {
+        "types": "./types/icu.d.cts",
+        "default": "./dist-cjs/icu.cjs"
+      }
+    },
+    "./prepopulatedfs": {
+      "import": {
+        "types": "./types/prepopulatedfs.d.ts",
+        "default": "./src/prepopulatedfs.js"
+      },
+      "require": {
+        "types": "./types/prepopulatedfs.d.cts",
+        "default": "./dist-cjs/prepopulatedfs.cjs"
+      }
+    },
+    "./contrib/*": {
+      "import": {
+        "types": "./types/contrib/*.d.ts",
+        "default": "./contrib/*.js"
+      },
+      "require": {
+        "types": "./types/contrib/*.d.cts",
+        "default": "./dist-cjs/contrib/*.cjs"
+      }
+    },
+    "./ext/*": {
+      "import": {
+        "types": "./types/ext/*.d.ts",
+        "default": "./ext/*.js"
+      },
+      "require": {
+        "types": "./types/ext/*.d.cts",
+        "default": "./dist-cjs/ext/*.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./types/react/index.d.ts",
+        "default": "./react/index.js"
+      },
+      "require": {
+        "types": "./types/react/index.d.cts",
+        "default": "./dist-cjs/react.cjs"
+      }
+    },
+    "./vue": {
+      "import": {
+        "types": "./types/vue/index.d.ts",
+        "default": "./vue/index.js"
+      },
+      "require": {
+        "types": "./types/vue/index.d.cts",
+        "default": "./dist-cjs/vue.cjs"
+      }
+    },
+    "./repl": {
+      "import": {
+        "types": "./types/repl/index.d.ts",
+        "default": "./repl/index.js"
+      },
+      "require": {
+        "types": "./types/repl/index.d.cts",
+        "default": "./dist-cjs/repl.cjs"
+      }
+    },
+    "./repl/webcomponent": {
+      "import": {
+        "types": "./types/repl/webcomponent.d.ts",
+        "default": "./repl/webcomponent.js"
+      },
+      "require": {
+        "types": "./types/repl/webcomponent.d.cts",
+        "default": "./dist-cjs/repl-webcomponent.cjs"
+      }
+    },
+    "./repl/Repl.css": "./repl/Repl.css"
+  },
+  "files": [
+    "src",
+    "contrib",
+    "ext",
+    "react",
+    "vue",
+    "types",
+    "dist-cjs",
+    "release",
+    "dist",
+    "vendor-tools",
+    "repl"
+  ],
+  "scripts": {
+    "build:bridge": "../scripts/build-bridge.sh",
+    "build:cjs": "node scripts/build-cjs.mjs",
+    "test": "node test/smoke.mjs && node test/persist.mjs && node test/worker.mjs && node test/socket.mjs && node test/pg-compat.mjs && node test/sync-apply.mjs && node test/sync-provider.mjs && node test/extensions.mjs && node test/ext-packages.mjs && node test/tools.mjs && node test/diff.mjs && node test/browser/run.mjs && node test/browser/run.mjs /test/browser/frameworks.html && npm run -s build:test:repl && node test/browser/run-repl.mjs",
+    "build:test:repl": "esbuild test/browser/repl-src.mjs --bundle --format=esm --outfile=test/repl-app.mjs '--external:./nodefs.js' '--external:fs' '--external:fs/promises' '--external:zlib' '--external:util' '--external:worker_threads' '--external:stream' '--external:stream/promises' '--external:path' '--external:net' '--external:events' '--external:url' '--external:module'"
+  },
+  "peerDependencies": {
+    "@codemirror/autocomplete": "^6.18.1",
+    "@codemirror/commands": "^6.7.0",
+    "@codemirror/lang-sql": "^6.8.0",
+    "@codemirror/language": "^6.10.3",
+    "@codemirror/view": "^6.34.1",
+    "@electric-sql/client": ">=1.0.0",
+    "@electric-sql/experimental": ">=1.0.0",
+    "@uiw/codemirror-theme-github": "4.23.5",
+    "@uiw/codemirror-themes": "4.23.5",
+    "@uiw/react-codemirror": "4.23.5",
+    "psql-describe": "^0.1.5",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
+    "vue": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/client": {
+      "optional": true
+    },
+    "@electric-sql/experimental": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "@uiw/react-codemirror": {
+      "optional": true
+    },
+    "@uiw/codemirror-theme-github": {
+      "optional": true
+    },
+    "@uiw/codemirror-themes": {
+      "optional": true
+    },
+    "@codemirror/autocomplete": {
+      "optional": true
+    },
+    "@codemirror/commands": {
+      "optional": true
+    },
+    "@codemirror/lang-sql": {
+      "optional": true
+    },
+    "@codemirror/language": {
+      "optional": true
+    },
+    "@codemirror/view": {
+      "optional": true
+    },
+    "psql-describe": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/view": "^6.43.15",
+    "@uiw/codemirror-theme-github": "^4.23.5",
+    "@uiw/codemirror-themes": "^4.23.5",
+    "@uiw/react-codemirror": "^4.23.5",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.64.1",
+    "psql-describe": "^0.1.7",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vue": "^3.5.44"
+  },
+  "dependencies": {
+    "@types/emscripten": "^1.41.1"
+  }
+}

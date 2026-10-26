@@ -1,0 +1,36 @@
+source	destination	retained host responsibilities	status
+packages/pg-protocol/src/buffer-reader.ts	pglite-protocol/src/reader.rs	none	implemented
+packages/pg-protocol/src/buffer-writer.ts	pglite-protocol/src/writer.rs	none	implemented
+packages/pg-protocol/src/string-utils.ts	pglite-protocol/src/string_utils.rs	none	implemented
+packages/pg-protocol/src/messages.ts	pglite-protocol/src/messages.rs	JS DatabaseError/Notice class shapes at boundary	implemented
+packages/pg-protocol/src/parser.ts	pglite-protocol/src/parser.rs	none	implemented
+packages/pg-protocol/src/serializer.ts	pglite-protocol/src/serializer.rs	none	implemented
+packages/pg-protocol/src/types.ts	pglite-protocol/src/lib.rs (Mode enum)	none	implemented
+packages/pglite/src/types.ts	pglite-core/src/types.rs	JS value materialization (Date, Uint8Array, BigInt, JSON.parse) in adapter	implemented
+packages/pglite/src/parse.ts	pglite-core/src/results.rs	none	implemented
+packages/pglite/src/errors.ts	pglite-core/src/errors.rs	PGliteError JS class shape	implemented
+packages/pglite/src/templating.ts	pglite-core/src/templating.rs	TemplateStringsArray/raw capture at JS boundary	in-progress
+packages/pglite/src/base.ts	pglite-core/src/query.rs (orchestration), pglite-core/src/transaction.rs	mutex semantics via adapter host locks	in-progress
+packages/pglite/src/pglite.ts	adapter/src/engine.js (engine ops) + pglite-core session/query logic	Emscripten module lifecycle, callbacks, execSync loop, ENV, /dev/blob, notify listeners	design-verified
+packages/pglite/src/initdb.ts	adapter/src/initdb.js	second Emscripten module, PROXYFS, tar transfer	design-verified
+packages/pglite/src/initdbModFactory.ts	adapter (vendor glue import)	generated initdb.js factory	retained-host
+packages/pglite/src/postgresMod.ts	adapter (vendor glue import)	generated pglite.js factory	retained-host
+packages/pglite/src/argsParser.ts	adapter/src/argsParser.js	initdb system()/popen() arg tokenization	in-progress
+packages/pglite/src/extensionUtils.ts	adapter/src/extensions.js	JS extension hooks, bundle fetch	not-started
+packages/pglite/src/fs/index.ts	adapter/src/fs.js	dataDir parsing, fs selection	implemented
+packages/pglite/src/fs/base.ts	adapter/src/fs.js	Emscripten FS bridge to custom FS	in-progress
+packages/pglite/src/fs/memoryfs.ts	adapter (Emscripten MEMFS builtin)	none	implemented
+packages/pglite/src/fs/nodefs.ts	adapter/src/fs/nodefs.js	Node fs/promises backend	not-started
+packages/pglite/src/fs/idbfs.ts	adapter/src/fs/idbfs.js	IndexedDB backend	not-started
+packages/pglite/src/fs/opfs-ahp.ts	adapter/src/fs/opfs-ahp.js	OPFS access-handle pool	not-started
+packages/pglite/src/fs/tarUtils.ts	adapter/src/tar.js	tar/gzip + File/Blob	implemented
+packages/pglite/src/interface.ts	adapter/src/index.d.ts	public types only	not-started
+packages/pglite/src/utils.ts	pglite-core/src/util.rs + adapter	JS-only helpers stay	in-progress
+packages/pglite/src/worker/*	adapter/src/worker.js	Worker, BroadcastChannel, locks, structured clone	not-started
+packages/pglite/src/live/*	pglite-live (planned) + adapter callbacks	subscription delivery not-started
+packages/pglite/src/polyfills/*	adapter	host polyfills	retained-host
+packages/pglite/src/contrib/*	adapter/src/contrib/*	JS extension entry points	retained-host
+packages/pglite/src/index.ts	adapter/src/index.js	public exports	implemented
+packages/pglite-sync/src/*	pglite-sync (planned) + adapter transport	Electric client transport	not-started
+packages/pglite-{socket,node-postgres,tools,prepopulatedfs,icu-full,age,react,vue,repl,extensions,utils,benchmark}/*	adapter + future crates per need	framework/native integrations	not-started
+packages/pglite-utils/src/utils.ts	adapter/src/pglUtils.js	WASM_PREFIX, instantiateWasm, getFsBundle, toPostgresName, rmdirRecursive	implemented

@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pglite-protocol",
+    "crates/pglite-core",
+    "crates/pglite-bridge",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.85"
+
+[profile.release]
+opt-level = 2
+lto = true

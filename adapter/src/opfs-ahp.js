@@ -1,0 +1,641 @@
+// Port of fs/opfs-ahp.ts — OPFS access-handle-pool filesystem.
+// Keeps a pool of pre-opened FileSystemSyncAccessHandles and allocates them
+// to files on demand; the directory tree is a JSON state file with a WAL of
+// pending ops, checkpointed periodically.
+import { BaseFilesystem, ERRNO_CODES } from './fs.js'
+
+const STATE_FILE = 'state.txt'
+const DATA_DIR = 'data'
+const INITIAL_MODE = {
+  DIR: 16384,
+  FILE: 32768,
+}
+
+/**
+ * PGlite OPFS access handle pool filesystem.
+ * Opens a pool of sync access handles and then allocates them as needed.
+ */
+export class OpfsAhpFS extends BaseFilesystem {
+  #opfsRootAh
+  #rootAh
+  #dataDirAh
+
+  #stateFH
+  #stateSH
+
+  #fssh = new Map()
+
+  #handleIdCounter = 0
+  #openHandlePaths = new Map()
+  #openHandleIds = new Map()
+
+  state
+  lastCheckpoint = 0
+  checkpointInterval = 1000 * 60 // 1 minute
+  poolCounter = 0
+
+  #unsyncedSH = new Set()
+
+  constructor(
+    dataDir,
+    {
+      initialPoolSize = 1000,
+      maintainedPoolSize = 100,
+      debug = false,
+    } = {},
+  ) {
+    super(dataDir, { debug })
+    this.initialPoolSize = initialPoolSize
+    this.maintainedPoolSize = maintainedPoolSize
+  }
+
+  async init(pg, opts) {
+    await this.#init()
+    return super.init(pg, opts)
+  }
+
+  async syncToFs(relaxedDurability = false) {
+    await this.maybeCheckpointState()
+    await this.maintainPool()
+    if (!relaxedDurability) {
+      this.flush()
+    }
+  }
+
+  async closeFs() {
+    for (const entry of this.#fssh.values()) {
+      entry.sh.close()
+    }
+    this.#stateSH.flush()
+    this.#stateSH.close()
+    this.pg.Module.FS.quit()
+  }
+
+  async #init() {
+    this.#opfsRootAh = await navigator.storage.getDirectory()
+    this.#rootAh = await this.#resolveOpfsDirectory(this.dataDir, {
+      create: true,
+    })
+    this.#dataDirAh = await this.#resolveOpfsDirectory(DATA_DIR, {
+      from: this.#rootAh,
+      create: true,
+    })
+
+    this.#stateFH = await this.#rootAh.getFileHandle(STATE_FILE, {
+      create: true,
+    })
+    this.#stateSH = await this.#stateFH.createSyncAccessHandle()
+
+    const stateAB = new ArrayBuffer(this.#stateSH.getSize())
+    this.#stateSH.read(stateAB, { at: 0 })
+    let state
+    const stateLines = new TextDecoder().decode(stateAB).split('\n')
+    // Line 1 is a base state object.
+    // Lines 1+n are WAL entries.
+
+    let isNewState = false
+    try {
+      state = JSON.parse(stateLines[0])
+    } catch (e) {
+      state = {
+        root: {
+          type: 'directory',
+          lastModified: Date.now(),
+          mode: INITIAL_MODE.DIR,
+          children: {},
+        },
+        pool: [],
+      }
+      // write new state to file
+      this.#stateSH.truncate(0)
+      this.#stateSH.write(new TextEncoder().encode(JSON.stringify(state)), {
+        at: 0,
+      })
+      isNewState = true
+    }
+    this.state = state
+
+    // Apply WAL entries
+    const wal = stateLines
+      .slice(1)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+    for (const entry of wal) {
+      const methodName = `_${entry.opp}State`
+      if (typeof this[methodName] === 'function') {
+        try {
+          const method = this[methodName]
+          method.bind(this)(...entry.args)
+        } catch (e) {
+          console.warn('Error applying OPFS AHP WAL entry', entry, e)
+        }
+      }
+    }
+
+    // Open all file handles for dir tree
+    const walkPromises = []
+    const walk = async (node) => {
+      if (node.type === 'file') {
+        try {
+          const fh = await this.#dataDirAh.getFileHandle(node.backingFilename)
+          const sh = await fh.createSyncAccessHandle()
+          this.#fssh.set(node.backingFilename, { sh, fh })
+        } catch (e) {
+          console.error('Error opening file handle for node', node, e)
+        }
+      } else {
+        for (const child of Object.values(node.children)) {
+          walkPromises.push(walk(child))
+        }
+      }
+    }
+    await walk(this.state.root)
+
+    // Open all pool file handles
+    const poolPromises = []
+    for (const filename of this.state.pool) {
+      poolPromises.push(
+        // eslint-disable-next-line no-async-promise-executor
+        new Promise(async (resolve) => {
+          if (this.#fssh.has(filename)) {
+            console.warn('File handle already exists for pool file', filename)
+          }
+          const fh = await this.#dataDirAh.getFileHandle(filename)
+          const sh = await fh.createSyncAccessHandle()
+          this.#fssh.set(filename, { fh, sh })
+          resolve()
+        }),
+      )
+    }
+
+    await Promise.all([...walkPromises, ...poolPromises])
+
+    await this.maintainPool(
+      isNewState ? this.initialPoolSize : this.maintainedPoolSize,
+    )
+  }
+
+  async maintainPool(size) {
+    size = size || this.maintainedPoolSize
+    const change = size - this.state.pool.length
+    const promises = []
+    for (let i = 0; i < change; i++) {
+      promises.push(
+        // eslint-disable-next-line no-async-promise-executor
+        new Promise(async (resolve) => {
+          ++this.poolCounter
+          const filename = `${(Date.now() - 1704063600).toString(16).padStart(8, '0')}-${this.poolCounter.toString(16).padStart(8, '0')}`
+          const fh = await this.#dataDirAh.getFileHandle(filename, {
+            create: true,
+          })
+          const sh = await fh.createSyncAccessHandle()
+          this.#fssh.set(filename, { fh, sh })
+          this.#logWAL({
+            opp: 'createPoolFile',
+            args: [filename],
+          })
+          this.state.pool.push(filename)
+          resolve()
+        }),
+      )
+    }
+    for (let i = 0; i > change; i--) {
+      promises.push(
+        // eslint-disable-next-line no-async-promise-executor
+        new Promise(async (resolve) => {
+          const filename = this.state.pool.pop()
+          this.#logWAL({
+            opp: 'deletePoolFile',
+            args: [filename],
+          })
+          const fhsh = this.#fssh.get(filename)
+          fhsh?.sh?.close()
+          await this.#dataDirAh.removeEntry(fhsh.fh.name)
+          this.#fssh.delete(filename)
+          resolve()
+        }),
+      )
+    }
+    await Promise.all(promises)
+  }
+
+  _createPoolFileState(filename) {
+    this.state.pool.push(filename)
+  }
+
+  _deletePoolFileState(filename) {
+    const index = this.state.pool.indexOf(filename)
+    if (index > -1) {
+      this.state.pool.splice(index, 1)
+    }
+  }
+
+  async maybeCheckpointState() {
+    if (Date.now() - this.lastCheckpoint > this.checkpointInterval) {
+      await this.checkpointState()
+    }
+  }
+
+  async checkpointState() {
+    const stateAB = new TextEncoder().encode(JSON.stringify(this.state))
+    this.#stateSH.truncate(0)
+    this.#stateSH.write(stateAB, { at: 0 })
+    this.#stateSH.flush()
+    this.lastCheckpoint = Date.now()
+  }
+
+  flush() {
+    for (const sh of this.#unsyncedSH) {
+      try {
+        sh.flush()
+      } catch (e) {
+        // The file may have been closed if it was deleted
+      }
+    }
+    this.#unsyncedSH.clear()
+  }
+
+  // Filesystem API:
+
+  chmod(path, mode) {
+    this.#tryWithWAL({ opp: 'chmod', args: [path, mode] }, () => {
+      this._chmodState(path, mode)
+    })
+  }
+
+  _chmodState(path, mode) {
+    const node = this.#resolvePath(path)
+    node.mode = mode
+  }
+
+  close(fd) {
+    const path = this.#getPathFromFd(fd)
+    this.#openHandlePaths.delete(fd)
+    this.#openHandleIds.delete(path)
+  }
+
+  fstat(fd) {
+    const path = this.#getPathFromFd(fd)
+    return this.lstat(path)
+  }
+
+  lstat(path) {
+    const node = this.#resolvePath(path)
+    const size =
+      node.type === 'file'
+        ? this.#fssh.get(node.backingFilename).sh.getSize()
+        : 0
+    const blksize = 4096
+    return {
+      dev: 0,
+      ino: 0,
+      mode: node.mode,
+      nlink: 1,
+      uid: 0,
+      gid: 0,
+      rdev: 0,
+      size,
+      blksize,
+      blocks: Math.ceil(size / blksize),
+      atime: node.lastModified,
+      mtime: node.lastModified,
+      ctime: node.lastModified,
+    }
+  }
+
+  mkdir(path, options) {
+    this.#tryWithWAL({ opp: 'mkdir', args: [path, options] }, () => {
+      this._mkdirState(path, options)
+    })
+  }
+
+  _mkdirState(path, options) {
+    const parts = this.#pathParts(path)
+    const newDirName = parts.pop()
+    const currentPath = []
+    let node = this.state.root
+    for (const part of parts) {
+      currentPath.push(path)
+      if (!Object.prototype.hasOwnProperty.call(node.children, part)) {
+        if (options?.recursive) {
+          this.mkdir(currentPath.join('/'))
+        } else {
+          throw new FsError('ENOENT', 'No such file or directory')
+        }
+      }
+      if (node.children[part].type !== 'directory') {
+        throw new FsError('ENOTDIR', 'Not a directory')
+      }
+      node = node.children[part]
+    }
+    if (Object.prototype.hasOwnProperty.call(node.children, newDirName)) {
+      throw new FsError('EEXIST', 'File exists')
+    }
+    const newDir = {
+      type: 'directory',
+      lastModified: Date.now(),
+      mode: options?.mode || INITIAL_MODE.DIR,
+      children: {},
+    }
+    node.children[newDirName] = newDir
+  }
+
+  open(path, _flags, _mode) {
+    const node = this.#resolvePath(path)
+    if (node.type !== 'file') {
+      throw new FsError('EISDIR', 'Is a directory')
+    }
+    const handleId = this.#nextHandleId()
+    this.#openHandlePaths.set(handleId, path)
+    this.#openHandleIds.set(path, handleId)
+    return handleId
+  }
+
+  readdir(path) {
+    const node = this.#resolvePath(path)
+    if (node.type !== 'directory') {
+      throw new FsError('ENOTDIR', 'Not a directory')
+    }
+    return Object.keys(node.children)
+  }
+
+  read(fd, buffer, offset, length, position) {
+    const path = this.#getPathFromFd(fd)
+    const node = this.#resolvePath(path)
+    if (node.type !== 'file') {
+      throw new FsError('EISDIR', 'Is a directory')
+    }
+    const sh = this.#fssh.get(node.backingFilename).sh
+    return sh.read(new Uint8Array(buffer.buffer, offset, length), {
+      at: position,
+    })
+  }
+
+  rename(oldPath, newPath) {
+    this.#tryWithWAL({ opp: 'rename', args: [oldPath, newPath] }, () => {
+      this._renameState(oldPath, newPath, true)
+    })
+  }
+
+  _renameState(oldPath, newPath, doFileOps = false) {
+    const oldPathParts = this.#pathParts(oldPath)
+    const oldFilename = oldPathParts.pop()
+    const oldParent = this.#resolvePath(oldPathParts.join('/'))
+    if (
+      !Object.prototype.hasOwnProperty.call(oldParent.children, oldFilename)
+    ) {
+      throw new FsError('ENOENT', 'No such file or directory')
+    }
+    const newPathParts = this.#pathParts(newPath)
+    const newFilename = newPathParts.pop()
+    const newParent = this.#resolvePath(newPathParts.join('/'))
+    if (
+      doFileOps &&
+      Object.prototype.hasOwnProperty.call(newParent.children, newFilename)
+    ) {
+      // Overwrite, so return the underlying file to the pool
+      const node = newParent.children[newFilename]
+      const sh = this.#fssh.get(node.backingFilename).sh
+      sh.truncate(0)
+      this.state.pool.push(node.backingFilename)
+    }
+    newParent.children[newFilename] = oldParent.children[oldFilename]
+    delete oldParent.children[oldFilename]
+  }
+
+  rmdir(path) {
+    this.#tryWithWAL({ opp: 'rmdir', args: [path] }, () => {
+      this._rmdirState(path)
+    })
+  }
+
+  _rmdirState(path) {
+    const pathParts = this.#pathParts(path)
+    const dirName = pathParts.pop()
+    const parent = this.#resolvePath(pathParts.join('/'))
+    if (!Object.prototype.hasOwnProperty.call(parent.children, dirName)) {
+      throw new FsError('ENOENT', 'No such file or directory')
+    }
+    const node = parent.children[dirName]
+    if (node.type !== 'directory') {
+      throw new FsError('ENOTDIR', 'Not a directory')
+    }
+    if (Object.keys(node.children).length > 0) {
+      throw new FsError('ENOTEMPTY', 'Directory not empty')
+    }
+    delete parent.children[dirName]
+  }
+
+  truncate(path, len = 0) {
+    const node = this.#resolvePath(path)
+    if (node.type !== 'file') {
+      throw new FsError('EISDIR', 'Is a directory')
+    }
+    const sh = this.#fssh.get(node.backingFilename)?.sh
+    if (!sh) {
+      throw new FsError('ENOENT', 'No such file or directory')
+    }
+    sh.truncate(len)
+    this.#unsyncedSH.add(sh)
+  }
+
+  unlink(path) {
+    this.#tryWithWAL({ opp: 'unlink', args: [path] }, () => {
+      this._unlinkState(path, true)
+    })
+  }
+
+  _unlinkState(path, doFileOps = false) {
+    const pathParts = this.#pathParts(path)
+    const filename = pathParts.pop()
+    const dir = this.#resolvePath(pathParts.join('/'))
+    if (!Object.prototype.hasOwnProperty.call(dir.children, filename)) {
+      throw new FsError('ENOENT', 'No such file or directory')
+    }
+    const node = dir.children[filename]
+    if (node.type !== 'file') {
+      throw new FsError('EISDIR', 'Is a directory')
+    }
+    delete dir.children[filename]
+    if (doFileOps) {
+      const sh = this.#fssh.get(node.backingFilename).sh
+      // We don't delete the file, it's truncated and returned to the pool
+      sh?.truncate(0)
+      this.#unsyncedSH.add(sh)
+      if (this.#openHandleIds.has(path)) {
+        this.#openHandlePaths.delete(this.#openHandleIds.get(path))
+        this.#openHandleIds.delete(path)
+      }
+    }
+    this.state.pool.push(node.backingFilename)
+  }
+
+  utimes(path, atime, mtime) {
+    this.#tryWithWAL({ opp: 'utimes', args: [path, atime, mtime] }, () => {
+      this._utimesState(path, atime, mtime)
+    })
+  }
+
+  _utimesState(path, _atime, mtime) {
+    const node = this.#resolvePath(path)
+    node.lastModified = mtime
+  }
+
+  writeFile(path, data, options) {
+    const pathParts = this.#pathParts(path)
+    const filename = pathParts.pop()
+    const parent = this.#resolvePath(pathParts.join('/'))
+
+    if (!Object.prototype.hasOwnProperty.call(parent.children, filename)) {
+      if (this.state.pool.length === 0) {
+        throw new Error('No more file handles available in the pool')
+      }
+      const node = {
+        type: 'file',
+        lastModified: Date.now(),
+        mode: options?.mode || INITIAL_MODE.FILE,
+        backingFilename: this.state.pool.pop(),
+      }
+      parent.children[filename] = node
+      this.#logWAL({
+        opp: 'createFileNode',
+        args: [path, node],
+      })
+    } else {
+      const node = parent.children[filename]
+      node.lastModified = Date.now()
+      this.#logWAL({
+        opp: 'setLastModified',
+        args: [path, node.lastModified],
+      })
+    }
+    const node = parent.children[filename]
+    const sh = this.#fssh.get(node.backingFilename).sh
+    // Files in pool are empty, only write if data is provided
+    if (data.length > 0) {
+      sh.write(
+        typeof data === 'string'
+          ? new TextEncoder().encode(data)
+          : new Uint8Array(data),
+        { at: 0 },
+      )
+      if (path.startsWith('/pg_wal')) {
+        this.#unsyncedSH.add(sh)
+      }
+    }
+  }
+
+  _createFileNodeState(path, node) {
+    const pathParts = this.#pathParts(path)
+    const filename = pathParts.pop()
+    const parent = this.#resolvePath(pathParts.join('/'))
+    parent.children[filename] = node
+    // remove backingFilename from pool
+    const index = this.state.pool.indexOf(node.backingFilename)
+    if (index > -1) {
+      this.state.pool.splice(index, 1)
+    }
+    return node
+  }
+
+  _setLastModifiedState(path, lastModified) {
+    const node = this.#resolvePath(path)
+    node.lastModified = lastModified
+  }
+
+  write(fd, buffer, offset, length, position) {
+    const path = this.#getPathFromFd(fd)
+    const node = this.#resolvePath(path)
+    if (node.type !== 'file') {
+      throw new FsError('EISDIR', 'Is a directory')
+    }
+    const sh = this.#fssh.get(node.backingFilename)?.sh
+    if (!sh) {
+      throw new FsError('EBADF', 'Bad file descriptor')
+    }
+    const ret = sh.write(new Uint8Array(buffer, offset, length), {
+      at: position,
+    })
+    if (path.startsWith('/pg_wal')) {
+      this.#unsyncedSH.add(sh)
+    }
+    return ret
+  }
+
+  // Internal methods:
+
+  #tryWithWAL(entry, fn) {
+    const offset = this.#logWAL(entry)
+    try {
+      fn()
+    } catch (e) {
+      // Rollback WAL entry
+      this.#stateSH.truncate(offset)
+      throw e
+    }
+  }
+
+  #logWAL(entry) {
+    const entryJSON = JSON.stringify(entry)
+    const stateAB = new TextEncoder().encode(`\n${entryJSON}`)
+    const offset = this.#stateSH.getSize()
+    this.#stateSH.write(stateAB, { at: offset })
+    this.#unsyncedSH.add(this.#stateSH)
+    return offset
+  }
+
+  #pathParts(path) {
+    return path.split('/').filter(Boolean)
+  }
+
+  #resolvePath(path, from) {
+    const parts = this.#pathParts(path)
+    let node = from || this.state.root
+    for (const part of parts) {
+      if (node.type !== 'directory') {
+        throw new FsError('ENOTDIR', 'Not a directory')
+      }
+      if (!Object.prototype.hasOwnProperty.call(node.children, part)) {
+        throw new FsError('ENOENT', 'No such file or directory')
+      }
+      node = node.children[part]
+    }
+    return node
+  }
+
+  #getPathFromFd(fd) {
+    const path = this.#openHandlePaths.get(fd)
+    if (!path) {
+      throw new FsError('EBADF', 'Bad file descriptor')
+    }
+    return path
+  }
+
+  #nextHandleId() {
+    const id = ++this.#handleIdCounter
+    while (this.#openHandlePaths.has(id)) {
+      this.#handleIdCounter++
+    }
+    return id
+  }
+
+  async #resolveOpfsDirectory(path, options) {
+    const parts = this.#pathParts(path)
+    let ah = options?.from || this.#opfsRootAh
+    for (const part of parts) {
+      ah = await ah.getDirectoryHandle(part, { create: options?.create })
+    }
+    return ah
+  }
+}
+
+class FsError extends Error {
+  constructor(code, message) {
+    super(message)
+    if (typeof code === 'number') {
+      this.code = code
+    } else if (typeof code === 'string') {
+      this.code = ERRNO_CODES[code]
+    }
+  }
+}
